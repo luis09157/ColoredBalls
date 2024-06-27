@@ -46,18 +46,24 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     }
 
     // Inicialización de bolas con colores y posiciones
-    // Inicialización de bolas con colores y posiciones
     private fun initializeBalls() {
         // Lista de colores en orden aleatorio pero consistente
         val colors = listOf(Color.GREEN, Color.RED, Color.YELLOW, Color.BLUE, Color.MAGENTA)
-            .shuffled(Random(123)) // El número dentro de Random() determina la semilla
 
         var ballId = 0
+        var pos = 0
 
         for (y in colors.indices) {
             val initialColumn = columns[y]
+
+
             for (i in 0 until 8) {
-                val ball = Ball(colors[y], 0f, 0f, ballId++) // Asignar ID único
+                if(pos == 4){
+                    pos = 0
+                }else{
+                    pos++
+                }
+                val ball = Ball(colors[pos], 0f, 0f, ballId++) // Asignar ID único
                 balls.add(ball)
                 initialColumn.addBall(ball)
             }
