@@ -15,6 +15,14 @@ class Column(val id: Int, val balls: MutableList<Ball> = mutableListOf()) {
     fun removeBall(ball: Ball) {
         balls.remove(ball)
     }
+    // Dentro de la clase Column
+    fun isCompleteWithSameColor(): Boolean {
+        if (balls.size < maxBalls) return false
+
+        val firstColor = balls.firstOrNull()?.color ?: return false
+        return balls.all { it.color == firstColor }
+    }
+
 
     fun canAddBall(): Boolean {
         return balls.size < maxBalls

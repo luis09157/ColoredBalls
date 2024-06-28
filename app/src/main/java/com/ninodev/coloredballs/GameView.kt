@@ -5,10 +5,12 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.PointF
 import android.util.AttributeSet
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import android.widget.Toast
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -25,6 +27,7 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
 
     // Variable para la bola que se está arrastrando
     private var draggingBall: Ball? = null
+    private var touchOffset = PointF(0f, 0f)
 
     // Variables para dimensiones escaladas
     private var columnWidth = 0f
@@ -55,25 +58,25 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
 
     // Inicialización de bolas con colores y posiciones
     private fun initializeBalls() {
-        // List of texture resource IDs
-        val textureResIds = listOf(
-            R.drawable.bola_azul,
-            R.drawable.bola_roja,
-            R.drawable.bola_rosa,
-            R.drawable.bola_amarilla,
-            R.drawable.bola_verde
+        val colorsAndTextures = listOf(
+            "Azul" to R.drawable.bola_azul,
+            "Roja" to R.drawable.bola_roja,
+            "Rosa" to R.drawable.bola_rosa,
+            "Amarillo" to R.drawable.bola_amarilla,
+            "Verde" to R.drawable.bola_verde
         )
 
         // Load bitmaps from resources
-        val textures = textureResIds.map { resId ->
+        val textures = colorsAndTextures.map { (colorName, resId) ->
             BitmapFactory.decodeResource(resources, resId)
         }
 
         var ballId = 0
 
-        for (texture in textures) {
+        for (textureIndex in textures.indices) {
+            val texture = textures[textureIndex]
             repeat(8) {
-                val ball = Ball(texture, 0f, 0f, ballId++) // Asignar ID único
+                val ball = Ball(texture, 0f, 0f, ballId++, colorsAndTextures[textureIndex].first) // Asignar ID único y color
                 balls.add(ball)
             }
         }
@@ -136,7 +139,13 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     private fun drawBalls(canvas: Canvas) {
         for (column in columns) {
             for (ball in column.balls) {
-                canvas.drawBitmap(ball.texture, ball.x - ballRadius, ball.y - ballRadius, paint)
+                if (ball.isBeingDragged && ball == draggingBall) {
+                    // Dibujar la bola arrastrada en la posición del touch
+                    canvas.drawBitmap(ball.texture, ball.x - ballRadius, ball.y - ballRadius, paint)
+                } else {
+                    // Dibujar las otras bolas en sus posiciones originales
+                    canvas.drawBitmap(ball.texture, ball.x - ballRadius, ball.y - ballRadius, paint)
+                }
             }
         }
     }
@@ -182,21 +191,20 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     // Procesar acción de toque hacia abajo
     private fun handleTouchDown(touchX: Float, touchY: Float) {
         draggingBall = getTouchedBall(touchX, touchY)
-        draggingBall?.let {
-            ID_BALL_SELECTED = it.id
-            //Log.d(TAG, "Selected ball with ID: ${it.color}")
+        draggingBall?.let { ball ->
+            ID_BALL_SELECTED = ball.id
+            touchOffset.x = ball.x - touchX
+            touchOffset.y = ball.y - touchY
         }
-
         invalidate()
     }
 
     // Procesar movimiento de toque
     private fun handleTouchMove(touchX: Float, touchY: Float) {
         draggingBall?.let {
-            it.x = touchX
-            it.y = touchY
+            it.x = touchX + touchOffset.x
+            it.y = touchY + touchOffset.y
         }
-
         invalidate()
     }
 
@@ -204,6 +212,10 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     private fun handleTouchUp(dropX: Float) {
         draggingBall?.let { ball ->
             ball.isBeingDragged = false
+            val column = columns.find { it.balls.contains(ball) }
+            if(column != null) {
+                column?.removeBall(ball)
+            }
             handleBallDrop(ball, dropX)
             draggingBall = null
             invalidate()
@@ -217,22 +229,34 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
             abs((column.id + leftPositionBall) * columnWidth - dropX)
         }
 
-        targetColumn?.let {
+        targetColumn?.let { column ->
             // Verificar si la columna puede aceptar más bolas
-            if (it.canAddBall()) {
+            if (column.canAddBall()) {
+                // Animar la bola hacia la posición final en la columna
+                ball.startFallingAnimation(column, columnHeight, height.toFloat(), bottomMargin)
                 // Remover la bola de la columna anterior y agregarla a la nueva
-                columns.forEach { column -> column.removeBall(ball) }
-                it.addBall(ball)
+                columns.forEach { it.removeBall(ball) }
+                column.addBall(ball)
                 // Recalcular la posición de la bola en la nueva columna
-                updateBallPosition(ball, it)
+                updateBallPosition(ball, column)
             } else {
                 // Si no se puede añadir a la nueva columna, devolver la bola a su posición original
-                val originalColumn = columns.find { column -> column.balls.contains(ball) }
+                val originalColumn = columns.find { it.balls.contains(ball) }
                 originalColumn?.let {
                     updateBallPosition(ball, it)
                 }
+                return  // Salir de la función si no se puede añadir a la nueva columna
+            }
+
+            // Verificar si la columna está completa con bolas del mismo color
+            if (column.isCompleteWithSameColor()) {
+                showToast("¡Columna completa con el color: ${ball.color}!")
             }
         }
+
+        // Si no se encontró una columna válida, devolver la bola a su posición original
+        draggingBall = null
+        invalidate()
     }
 
     // Dibujar en la vista
@@ -255,5 +279,9 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
                 ball.y = max(ball.y, ballRadius)
             }
         }
+    }
+
+    private fun showToast(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 }
