@@ -1,6 +1,7 @@
 package com.ninodev.coloredballs
 
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -8,6 +9,9 @@ import android.util.AttributeSet
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.random.Random
 
 class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
@@ -27,10 +31,14 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     private var columnHeight = 0f
     private var bottomMargin = 0f
     private var ballRadius = 0f
+    private var leftPositionBall = 0.6f
+
+    // Variables de física
+    private val gravity = 0.5f // Gravedad
 
     // ID de la bola seleccionada
     companion object {
-        var ID_BALL_SELECTED = 0
+        var ID_BALL_SELECTED = -1
     }
 
     init {
@@ -47,29 +55,47 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
 
     // Inicialización de bolas con colores y posiciones
     private fun initializeBalls() {
-        // Lista de colores en orden aleatorio pero consistente
-        val colors = listOf(Color.GREEN, Color.RED, Color.YELLOW, Color.BLUE, Color.MAGENTA)
+        // List of texture resource IDs
+        val textureResIds = listOf(
+            R.drawable.bola_azul,
+            R.drawable.bola_roja,
+            R.drawable.bola_rosa,
+            R.drawable.bola_amarilla,
+            R.drawable.bola_verde
+        )
+
+        // Load bitmaps from resources
+        val textures = textureResIds.map { resId ->
+            BitmapFactory.decodeResource(resources, resId)
+        }
 
         var ballId = 0
-        var pos = 0
 
-        for (y in colors.indices) {
-            val initialColumn = columns[y]
-
-
-            for (i in 0 until 8) {
-                if(pos == 4){
-                    pos = 0
-                }else{
-                    pos++
-                }
-                val ball = Ball(colors[pos], 0f, 0f, ballId++) // Asignar ID único
+        for (texture in textures) {
+            repeat(8) {
+                val ball = Ball(texture, 0f, 0f, ballId++) // Asignar ID único
                 balls.add(ball)
-                initialColumn.addBall(ball)
             }
+        }
+
+        // Shuffle balls randomly but consistently
+        balls.shuffle(Random(12345))
+
+        // Distribute balls into columns
+        for (i in balls.indices) {
+            val column = columns[i % 5] // Distribuir en las primeras 5 columnas
+            column.addBall(balls[i])
         }
     }
 
+    // Función auxiliar para actualizar la posición de la bola
+    private fun updateBallPosition(ball: Ball, column: Column) {
+        val left = (column.id + leftPositionBall) * columnWidth
+        val bottom = height - bottomMargin
+        val ballIndex = column.balls.indexOf(ball)
+        ball.x = left + columnWidth * 0.5f
+        ball.y = bottom - (ballIndex + 0.5f) * (columnHeight / column.maxBalls)
+    }
 
     // Escalado de objetos según las dimensiones de la vista
     private fun scaleObjects() {
@@ -78,19 +104,16 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
 
         // Calcular dimensiones y posiciones
         columnWidth = screenWidth / 7
-        columnHeight = screenHeight * 0.8f
-        bottomMargin = screenHeight * 0.1f
-        ballRadius = columnWidth * 0.3f
+        columnHeight = screenHeight * 0.7f
+        bottomMargin = screenHeight * 0.03f
+        ballRadius = columnWidth * leftPositionBall
 
         // Posicionar bolas inicialmente
         for (column in columns) {
-            val left = (column.id + 0.5f) * columnWidth
-            val bottom = screenHeight - bottomMargin
             for (i in column.balls.indices) {
                 val ball = column.balls[i]
                 if (ball.id != ID_BALL_SELECTED) {
-                    ball.x = left + columnWidth * 0.4f
-                    ball.y = bottom - (i + 0.5f) * (columnHeight / column.maxBalls)
+                    updateBallPosition(ball, column)
                 }
             }
         }
@@ -113,8 +136,7 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     private fun drawBalls(canvas: Canvas) {
         for (column in columns) {
             for (ball in column.balls) {
-                paint.color = ball.color
-                canvas.drawCircle(ball.x, ball.y, ballRadius, paint)
+                canvas.drawBitmap(ball.texture, ball.x - ballRadius, ball.y - ballRadius, paint)
             }
         }
     }
@@ -162,7 +184,7 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
         draggingBall = getTouchedBall(touchX, touchY)
         draggingBall?.let {
             ID_BALL_SELECTED = it.id
-            Log.d(TAG, "Selected ball with ID: ${it.color}")
+            //Log.d(TAG, "Selected ball with ID: ${it.color}")
         }
 
         invalidate()
@@ -192,7 +214,7 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     private fun handleBallDrop(ball: Ball, dropX: Float) {
         // Encontrar la columna más cercana para soltar la bola
         val targetColumn = columns.minByOrNull { column ->
-            Math.abs((column.id + 0.5f) * columnWidth - dropX)
+            abs((column.id + leftPositionBall) * columnWidth - dropX)
         }
 
         targetColumn?.let {
@@ -202,20 +224,12 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
                 columns.forEach { column -> column.removeBall(ball) }
                 it.addBall(ball)
                 // Recalcular la posición de la bola en la nueva columna
-                val left = (it.id + 0.5f) * columnWidth
-                val bottom = height - bottomMargin
-                val newBallIndex = it.balls.indexOf(ball)
-                ball.x = left + columnWidth * 0.4f
-                ball.y = bottom - (newBallIndex + 0.5f) * (columnHeight / it.maxBalls)
+                updateBallPosition(ball, it)
             } else {
                 // Si no se puede añadir a la nueva columna, devolver la bola a su posición original
                 val originalColumn = columns.find { column -> column.balls.contains(ball) }
                 originalColumn?.let {
-                    val left = (it.id + 0.5f) * columnWidth
-                    val bottom = height - bottomMargin
-                    val originalBallIndex = it.balls.indexOf(ball)
-                    ball.x = left + columnWidth * 0.4f
-                    ball.y = bottom - (originalBallIndex + 0.5f) * (columnHeight / it.maxBalls)
+                    updateBallPosition(ball, it)
                 }
             }
         }
@@ -225,7 +239,21 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         scaleObjects()
+        applyPhysics()
         drawColumns(canvas)
         drawBalls(canvas)
+        invalidate() // Volver a dibujar continuamente para actualizar físicas
+    }
+
+    // Aplicar físicas simples a las bolas
+    private fun applyPhysics() {
+        for (ball in balls) {
+            if (ball.id != ID_BALL_SELECTED) {
+                ball.y += gravity // Aplicar gravedad
+                // Limitar para que no salga de la pantalla o de las columnas
+                ball.y = min(ball.y, height - bottomMargin - ballRadius)
+                ball.y = max(ball.y, ballRadius)
+            }
+        }
     }
 }

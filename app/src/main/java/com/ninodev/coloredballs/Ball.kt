@@ -1,3 +1,5 @@
 package com.ninodev.coloredballs
 
-data class Ball(var color: Int, var x: Float, var y: Float, val id: Int, var isBeingDragged: Boolean = false)
+import android.graphics.Bitmap
+
+data class Ball(var texture: Bitmap, var x: Float, var y: Float, val id: Int, var isBeingDragged: Boolean = false)
