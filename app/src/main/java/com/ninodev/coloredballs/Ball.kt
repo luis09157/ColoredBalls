@@ -13,7 +13,5 @@ data class Ball(
 
     var isFalling: Boolean = false
 
-    fun startFallingAnimation(column: Column, columnHeight: Float, height: Float, bottomMargin: Float) {
-        BallAnimator.animateToPosition(this, column, columnHeight, height, bottomMargin)
-    }
+
 }

@@ -25,6 +25,8 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     private val balls = mutableListOf<Ball>()
     private val columns = mutableListOf<Column>()
 
+    private var ballAnimator : BallAnimator? = null
+
     // Variable para la bola que se está arrastrando
     private var draggingBall: Ball? = null
     private var touchOffset = PointF(0f, 0f)
@@ -42,11 +44,15 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     // ID de la bola seleccionada
     companion object {
         var ID_BALL_SELECTED = -1
+        var FLAG_IN_COLUM = false
     }
 
     init {
         initializeColumns()
         initializeBalls()
+    }
+    fun initBallAnimator(){
+        ballAnimator = BallAnimator(columnHeight, height.toFloat(),bottomMargin)
     }
 
     // Inicialización de columnas
@@ -90,16 +96,6 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
             column.addBall(balls[i])
         }
     }
-
-    // Función auxiliar para actualizar la posición de la bola
-    private fun updateBallPosition(ball: Ball, column: Column) {
-        val left = (column.id + leftPositionBall) * columnWidth
-        val bottom = height - bottomMargin
-        val ballIndex = column.balls.indexOf(ball)
-        ball.x = left + columnWidth * 0.5f
-        ball.y = bottom - (ballIndex + 0.5f) * (columnHeight / column.maxBalls)
-    }
-
     // Escalado de objetos según las dimensiones de la vista
     private fun scaleObjects() {
         val screenWidth = width.toFloat()
@@ -120,6 +116,7 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
                 }
             }
         }
+        initBallAnimator()
     }
 
     // Dibujar las columnas en la vista
@@ -212,15 +209,23 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
     private fun handleTouchUp(dropX: Float) {
         draggingBall?.let { ball ->
             ball.isBeingDragged = false
-            val column = columns.find { it.balls.contains(ball) }
-            if(column != null) {
-                column?.removeBall(ball)
-            }
+
             handleBallDrop(ball, dropX)
             draggingBall = null
             invalidate()
         }
     }
+
+    private fun updateBallPosition(ball: Ball, column: Column) {
+        val positionSize = columnHeight / column.maxBalls
+        val positionAdd = positionSize / 2
+        val ballIndex = column.balls.indexOf(ball)
+        val bottom = height - bottomMargin
+
+        ball.x = (column.id + leftPositionBall) * columnWidth + columnWidth * 0.5f
+        ball.y = bottom - (ballIndex + 0.5f) * positionSize
+    }
+
 
     // Manejar la soltura de la bola en la columna más cercana
     private fun handleBallDrop(ball: Ball, dropX: Float) {
@@ -229,35 +234,64 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
             abs((column.id + leftPositionBall) * columnWidth - dropX)
         }
 
-        targetColumn?.let { column ->
-            // Verificar si la columna puede aceptar más bolas
-            if (column.canAddBall()) {
-                // Animar la bola hacia la posición final en la columna
-                ball.startFallingAnimation(column, columnHeight, height.toFloat(), bottomMargin)
-                // Remover la bola de la columna anterior y agregarla a la nueva
-                columns.forEach { it.removeBall(ball) }
-                column.addBall(ball)
-                // Recalcular la posición de la bola en la nueva columna
-                updateBallPosition(ball, column)
-            } else {
-                // Si no se puede añadir a la nueva columna, devolver la bola a su posición original
-                val originalColumn = columns.find { it.balls.contains(ball) }
-                originalColumn?.let {
-                    updateBallPosition(ball, it)
-                }
-                return  // Salir de la función si no se puede añadir a la nueva columna
-            }
+        // Mantener una referencia a la columna original y la posición inicial
+        val originalColumn = columns.find { it.balls.contains(ball) }
+        //val originalIndex = originalColumn?.balls?.indexOf(ball) ?: -1
+        val originalX = ball.x
+        val originalY = ball.y
 
-            // Verificar si la columna está completa con bolas del mismo color
+        // Verificar si la bola se soltó en la misma columna
+        if (originalColumn != null && originalColumn.id == targetColumn?.id) {
+            // Si está en la misma columna, solo actualizar su posición
+            ball.x = originalX
+            ball.y = originalY
+
+            FLAG_IN_COLUM = true
+            // Animar la bola hacia la posición original en la columna
+            startFallingAnimation(ball,originalColumn)
+            // Recalcular la posición de la bola en la columna original
+            updateBallPosition(ball, originalColumn)
+
+
+        } else {
+            // Si no está en la misma columna, mover la bola a la columna objetivo si es posible
+            targetColumn?.let { column ->
+                if (column.canAddBall()) {
+                    // Animar la bola hacia la posición final en la columna
+                    startFallingAnimation(ball,column)
+                    // Remover la bola de la columna anterior y agregarla a la nueva
+                    originalColumn?.removeBall(ball)
+                    column.addBall(ball)
+                    // Recalcular la posición de la bola en la nueva columna
+                    updateBallPosition(ball, column)
+                } else {
+                    // Si no se puede añadir a la nueva columna, devolver la bola a su posición original
+                    ball.x = originalX
+                    ball.y = originalY
+                    // Animar la bola hacia la posición original en la columna
+                    originalColumn?.let {
+                        startFallingAnimation(ball, column)
+                        // Actualizar su posición en la columna original
+                        updateBallPosition(ball, it)
+                    }
+                    showToast("¡La columna está llena! La bola se ha devuelto a su posición original.")
+                }
+            }
+        }
+
+        // Verificar si la columna está completa con bolas del mismo color
+        targetColumn?.let { column ->
             if (column.isCompleteWithSameColor()) {
                 showToast("¡Columna completa con el color: ${ball.color}!")
             }
         }
 
-        // Si no se encontró una columna válida, devolver la bola a su posición original
         draggingBall = null
         invalidate()
     }
+
+
+
 
     // Dibujar en la vista
     override fun onDraw(canvas: Canvas) {
@@ -283,5 +317,9 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
 
     private fun showToast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    fun startFallingAnimation(ball: Ball,column: Column) {
+        ballAnimator?.animateToPosition(ball, column)
     }
 }

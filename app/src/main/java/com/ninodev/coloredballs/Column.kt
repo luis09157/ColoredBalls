@@ -12,6 +12,8 @@ class Column(val id: Int, val balls: MutableList<Ball> = mutableListOf()) {
         return false
     }
 
+
+
     fun removeBall(ball: Ball) {
         balls.remove(ball)
     }
