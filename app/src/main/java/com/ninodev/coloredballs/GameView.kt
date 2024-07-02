@@ -266,14 +266,10 @@ class GameView(context: Context, attrs: AttributeSet) : View(context, attrs) {
                     updateBallPosition(ball, column)
                 } else {
                     // Si no se puede añadir a la nueva columna, devolver la bola a su posición original
-                    ball.x = originalX
-                    ball.y = originalY
-                    // Animar la bola hacia la posición original en la columna
-                    originalColumn?.let {
-                        startFallingAnimation(ball, column)
-                        // Actualizar su posición en la columna original
-                        updateBallPosition(ball, it)
-                    }
+                
+                    FLAG_IN_COLUM = true
+                    startFallingAnimation(ball, originalColumn!!)
+                    updateBallPosition(ball, originalColumn)
                     showToast("¡La columna está llena! La bola se ha devuelto a su posición original.")
                 }
             }
